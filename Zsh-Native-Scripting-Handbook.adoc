@@ -300,3 +300,90 @@ done < "$__ini_file"
 return 0
 ----
 
+[#add-testing-suite]
+### Add a testing suite
+
+You'll need at least a test runner. Here we use [`shUnit2`](https://github.com/kward/shunit2). To execute the tests automatically after every push, we connect the tests with [Travis-CI](http://travis-ci.org/).
+
+Step 1 - Add shUnit2 as a git submodule:
+`git add submodule git@github.com:kward/shunit2.git shunit2`
+
+Step 2 - Write tests:
+The tests are executable scripts that execute your program and compare a defined input with the result of your program.
+
+Step 3 - Execute Tests automatically on every push:
+All you need to do is to create a `.travis.yml` file in the root of your project and tell travis in that file what it should do. For us, this means that we need to tell Travis that it should install ZSH every time and execute our tests:
+
+.travis.yml
+[#travis-yml]
+[source,zsh]
+----
+language: sh
+
+os:
+  - linux
+  - osx
+
+osx_image: xcode9.4
+
+addons:
+  apt:
+    packages:
+      - build-essential
+      - git
+      - mercurial
+      - subversion
+      - jq
+      - node
+      - golang
+      - ruby
+      - python
+      - python-virtualenv
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update            ; fi
+
+env:
+  global:
+    - ZSH_DIST=$HOME/.zshdist
+  matrix:
+    # Use _ZSH_VERSION since if ZSH_VERSION is present, travis cacher thinks it
+    # is running in zsh and tries to use zsh specific functions.
+    - _ZSH_VERSION=5.6
+    - _ZSH_VERSION=5.5.1
+    - _ZSH_VERSION=5.5
+cache:
+  directories:
+    - $ZSH_DIST
+
+before_script:
+  - >
+    setup_zsh() {
+      dest="$ZSH_DIST/$1"
+      if [[ ! -d $dest/bin ]]; then
+        coreutils_mktemp="mktemp"
+        if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
+          coreutils_mktemp="gmktemp"
+        fi
+        tmp="$(${coreutils_mktemp} --directory --tmpdir="${TMPDIR:/tmp}" zshbuild.XXXXXX)"
+        (
+          cd "$tmp" &&
+          curl -L http://downloads.sourceforge.net/zsh/zsh-${1}.tar.gz | tar zx &&
+          cd zsh-$1 &&
+          ./configure --prefix="$dest" &&
+          make &&
+          mkdir -p "$dest" &&
+          make install ||
+          echo "Failed to build zsh-${1}!"
+        )
+      fi
+      export PATH="$dest/bin:$PATH"
+    }
+  - setup_zsh $_ZSH_VERSION
+  # Show the zsh version being used to test.
+  - "zsh --version"
+
+script:
+  # Execute your tests
+  - test/suite.spec
+----
